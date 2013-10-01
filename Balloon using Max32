@@ -1,0 +1,488 @@
+//Manages GPS and command system on ballon electronics box
+//gps currently sends gps string every quarter second
+#include <Servo.h>
+
+//serial - gps, commands
+char data2 = 0;
+char data1 = 0;
+String command = ""; //command recieved from ground
+String GPSsentence = ""; //GPS sentence from gps chip
+String GPSrelay = ""; //repackaged 8
+//String commandValue;
+boolean isReadingCommand = false;
+boolean hasCommand = false;
+boolean isReadingGPS = false;
+boolean hasGPS = false;
+//planes
+boolean releasePlane1 = false;
+boolean releasePlane2 = false;
+boolean releasePlane3 = false;
+
+//servos
+Servo servo1;
+Servo servo2;
+Servo servo3;
+
+//pins
+//servo pins
+const int pinServo1 = 8;
+const int pinServo2 = 9;
+const int pinServo3 = 10;
+//plane connection - connects to 5v line
+const int pinPlane1 = 27; 
+const int pinPlane2 = 26;
+const int pinPlane3 = 13;
+//leds
+const int pinLEDboard = 7;
+const int pinLEDplane1 = 6;
+const int pinLEDplane2 = 5;
+const int pinLEDplane3 = 4;
+
+
+//<dp1>
+//<ls1>
+
+//
+//2 radios: 900Mhz (Unlicensed, free),  gps
+//uart0: 900Mhz - ground to box (pins Rx -> 0, Tx -> 1)
+//uart1: gps - box to satellites (pins Rx -> 39, Tx -> 40)
+//comformation for commands
+//different frequency bands to differentiate gps and commands/ recieve and transmit signals? - no it will be sentence structure 
+//must wait for one command to be sent before next
+
+//loop the servo until dropped
+//not gate for default 'high' pins 13,12,11
+    
+void setup() 
+{
+  //begin serial communications
+  //Serial.begin(38400); //testing
+  Serial1.begin(38400); //balloon to gps //38400
+  Serial2.begin(38400); ////balloon to 900Mhz (ground)
+  
+  //set pins to outputs (LED indicators)
+  pinMode(pinLEDboard, OUTPUT);
+  pinMode(pinLEDplane1, OUTPUT);
+  pinMode(pinLEDplane2, OUTPUT);
+  pinMode(pinLEDplane3, OUTPUT);
+  
+  //initialize plane LED's to LOW
+  digitalWrite(pinLEDplane1, LOW);
+  digitalWrite(pinLEDplane2, LOW);
+  digitalWrite(pinLEDplane3, LOW);
+  
+  //initialize board LED to HIGH
+  digitalWrite(pinLEDboard, HIGH);  
+  
+  //set pins to inputs (plane drops) *default to input*
+  pinMode(pinPlane1,INPUT);
+  pinMode(pinPlane2,INPUT);
+  pinMode(pinPlane3,INPUT);
+  
+  //attach servos
+  servo1.attach(pinServo1); 
+  servo2.attach(pinServo2); 
+  servo3.attach(pinServo3);
+  
+  //initialize servos' positions
+  servo1.writeMicroseconds(1350); //center
+  servo2.writeMicroseconds(1350); //center
+  servo3.writeMicroseconds(1300); //center
+  
+//  //wait for servos to initialize
+//  delay(100);
+//  
+//  //deattach servos to save power
+//  servo1.detach();
+//  servo2.detach();
+//  servo3.detach();
+  
+  //initialize gps
+  // Enable NMEA protocol output on GPS Serial port 1
+  Serial1.write("$PUBX,41,1,0007,0002,38400,0*21\r\n");
+  
+  // Set the NMEA output rate on the GPS serial port 1 to be every epoch, and off for every other port
+  Serial1.write("$PUBX,40,GGA,0,1,0,0,0,0*5B\r\n");
+  Serial1.write("$PUBX,40,RMC,0,1,0,0,0,0*46\r\n");
+  
+  //opening serial monitor resets program
+  Serial2.write("Send me NMEA GPS sentence. \nor a command in the form of: \n <ls1> 'launch servo 1' \n <rs1> 'reset servo 1'\n\n");
+  // \n <dp3> 'deploy parachute 3' \n \n");  // *******************************************************************change to Serial 2
+
+}
+
+void loop()
+{
+  //communicate that planes have dropped - message to ground
+  //communicate that planes have power - LED
+  
+  //wait for a 'begin' sentence?? ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ modify
+  //do not loop the print "plane released"  ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ modify
+  //input pins with no connections are logically high --NOT GATE
+  if((digitalRead(pinPlane1) == LOW) && (releasePlane1 == false)) //prevents from sending message in loop
+  {
+    Serial2.print("Plane 1 released\r\n");  // *******************************************************************change to Serial 2
+    releasePlane1 = true;
+    digitalWrite(pinLEDplane1, LOW);
+    //---------------------------tests---------------------------
+    //Serial2.print("true");
+    
+    //---------------------------tests---------------------------
+  }
+  else if((digitalRead(pinPlane1) == HIGH) && (releasePlane1 == false)) //verifies that the previous 'if' statement didn't occure before plane released
+  {
+    digitalWrite(pinLEDplane1, HIGH);
+    //---------------------------tests---------------------------
+//    Serial2.print("LED1");
+//    delay(3000);
+    //---------------------------tests---------------------------
+  } 
+  
+  if((digitalRead(pinPlane2) == LOW) && (releasePlane2 == false))
+  {
+    Serial2.print("Plane 2 released\r\n"); // *******************************************************************change to Serial 2
+    releasePlane2 = true;
+    digitalWrite(pinLEDplane2, LOW);
+    //---------------------------tests---------------------------
+    
+    //---------------------------tests---------------------------
+  }
+  else if((digitalRead(pinPlane2)) == HIGH && (releasePlane2 == false))
+  {
+    digitalWrite(pinLEDplane2, HIGH);
+    //---------------------------tests---------------------------
+//    Serial2.print("LED2");
+//    delay(3000);
+    //---------------------------tests---------------------------
+  }
+  
+  if((digitalRead(pinPlane3)) == LOW && (releasePlane3 == false))
+  {
+    Serial2.print("Plane 3 released\r\n"); // *******************************************************************change to Serial 2
+    releasePlane3 = true;
+    digitalWrite(pinLEDplane3, LOW);
+    //---------------------------tests---------------------------
+    
+    //---------------------------tests---------------------------
+  }
+  else if((digitalRead(pinPlane3)) == HIGH && (releasePlane3 == false))
+  {
+    digitalWrite(pinLEDplane3, HIGH);
+    //---------------------------tests---------------------------
+//    Serial2.print("LED3");
+//    delay(3000);
+    //---------------------------tests---------------------------
+  }
+  
+  //communicate that planes are on - LEDs
+  //communicate that board is on - LED
+  
+  
+  //begin command '<' end sentence '>'
+  //different protocol for different uart ports
+  //check for launch servo command from ground, then launch servo
+  //check for deploy parachute command from ground, then relay to specific plane
+  //check for gps data sentence from plane, then relay to ground
+  
+  //recieve serial character, check for beginning character, check for termination character, store into string
+  //serial is ground to balloon, serial1 is balloon to plane
+
+//____________________________________Commands____________________________________
+  //read command from ground
+  if(Serial2.available())  //# of bytes are available in data buffer
+  {
+    data2 = Serial2.read(); //available becomes false
+    
+    //extract string of command from packaging
+    //beginning of command
+    if(data2 == '<')
+    {
+      isReadingCommand = true;
+      hasCommand = false;
+      command = "";
+      //---------------------------tests---------------------------
+      //Serial2.print("Recieved: ");
+      //---------------------------tests---------------------------
+    }
+    
+    //---------------------------tests---------------------------
+    //Serial2.write(data2);
+    //---------------------------tests---------------------------
+    
+    //end of command
+    if(data2 == '>')
+    {
+      isReadingCommand = false;
+      hasCommand = true;
+      //---------------------------tests---------------------------
+      //Serial2.print("\n");
+      //---------------------------tests---------------------------
+    }
+    //forming string of command
+    if(isReadingCommand && data2 != '<')
+    {
+      command = command + data2;
+    }    
+    //Serial.print(Serial.available());
+  }
+  
+  //interpret command
+  if(hasCommand)
+  { 
+    //---------------------------tests---------------------------
+    //Serial2.print("hasCommand: ");
+    //Serial2.print(command + "\n");
+    //---------------------------tests---------------------------
+    
+    //launch servo command
+    if(command.substring(0,2).equals("ls")) //.equals compares content of strings, == compares references of strings
+    {
+      if(command.charAt(2) == '1') //character is a number, string is a pointer/object
+      { 
+//        servo1.attach(pinServo1);
+//        while(!servo1.attached());
+        servo1.writeMicroseconds(940); //release plane 1
+//        delay(50);
+//        servo1.detach();
+        //continue until plane released
+        Serial2.print("Servo 1 activated\r\n");  // *******************************************************************change to Serial 2
+      }
+      
+      else if(command.charAt(2) == '2')
+      {
+//        servo2.attach(pinServo2);
+//        while(!servo2.attached());
+        servo2.writeMicroseconds(970); //release plane 2
+//        delay(50);
+//        servo2.detach();
+        Serial2.print("Servo 2 activated\r\n");  // *******************************************************************change to Serial 2
+      }
+      
+      else if(command.charAt(2) == '3')
+      {
+//        servo3.attach(pinServo3);
+//        while(!servo2.attached());
+        servo3.writeMicroseconds(1540); //release plane 3
+//        delay(50);
+//        servo3.detach();
+        Serial2.print("Servo 3 activated\r\n");  // *******************************************************************change to Serial 2
+      }
+    }
+    
+    //reset servo command
+    if(command.substring(0,2).equals("rs")) //.equals compares content of strings, == compares references of strings
+    {
+      if(command.charAt(2) == '1') //character is a number, string is a pointer/object
+      { 
+//        servo1.attach(pinServo1);
+//        while(!servo1.attached());
+        servo1.writeMicroseconds(1350); //reset plane 1
+//        delay(50);
+//        servo1.detach();
+        Serial2.print("Servo 1 reset\r\n");  // *******************************************************************change to Serial 2
+      }
+      
+      else if(command.charAt(2) == '2')
+      {
+//        servo2.attach(pinServo2);
+//        while(!servo2.attached());
+        servo2.writeMicroseconds(1350); //reset plane 2
+//        delay(50);
+//        servo2.detach();
+        Serial2.print("Servo 2 reset\r\n");  // *******************************************************************change to Serial 2
+      }
+      
+      else if(command.charAt(2) == '3')
+      {
+//        servo3.attach(pinServo3);
+//        while(!servo3.attached());
+        servo3.writeMicroseconds(1300); //reset plane 3
+//        delay(50);
+//        servo3.detach();
+        Serial2.print("Servo 3 reset\r\n");  // *******************************************************************change to Serial 2
+      }
+    }
+    
+    //deploy parachute command --> relocated to plane's code
+//    if(command.substring(0,2).equals("dp"))
+//    {
+//      if(command.charAt(2) == '1') //character is a number, string is a pointer/object
+//      { 
+//        Serial1.print("<dp1>");
+//        Serial.print("Plane 1 parachute command relayed \n\n");
+//      }
+//      
+//      else if(command.charAt(2) == '2')
+//      {
+//        Serial1.print("<dp2>");
+//        Serial.print("Plane 2 parachute command relayed \n\n");
+//      }
+//      
+//      
+//      else if(command.charAt(2) == '3')
+//      {
+//        Serial1.print("<dp3>");
+//        Serial.print("Plane 3 parachute command relayed \n\n");
+//      }
+//    }
+    hasCommand = false;
+  }
+  
+
+//____________________________________GPS____________________________________
+  if(Serial1.available()) //!!!!!!!!!!!! change Serial and data (add a '1' at the end)
+  {
+    //Serial.print("is available ");
+    data1 = Serial1.read(); //!!!!!!!!!!!! //!!!!!!!!!!!!
+    //---------------------------tests---------------------------
+    //Serial2.print("gps data ");
+    //---------------------------tests---------------------------
+    //extract string of sentence from packaging
+    //beginning of GPS sentence
+    if(data1 == '$') //!!!!!!!!!!!!
+    {
+      isReadingGPS = true;
+      hasGPS = false;
+      GPSsentence = "";
+      //---------------------------tests---------------------------
+      //Serial2.print("Recieved: ");
+      //---------------------------tests---------------------------
+    }
+    
+    //---------------------------tests---------------------------
+    //Serial2.write(data1); //!!!!!!!!!!!!
+    //---------------------------tests---------------------------
+    
+    //end of GPS setence
+    if(data1 == '\r') //!!!!!!!!!!!!
+    {
+      isReadingGPS = false;
+      hasGPS = true;
+      //---------------------------tests---------------------------
+//      Serial.print("\n");
+      //---------------------------tests---------------------------
+    }
+    
+    //forming string of GPS sentence
+    if(isReadingGPS && data1 != '$' && data1 != '\r' && data1 != '\n') //!!!!!!!!!!!! //!!!!!!!!!!!!
+    {
+      GPSsentence = GPSsentence + data1; //!!!!!!!!!!!!
+    }   
+    //---------------------------tests--------------------------- 
+    //Serial.print(Serial.available());
+    //---------------------------tests---------------------------
+   
+  }
+  
+  //relay GPS sentence (still need to parse, repackage)
+  //'@' start '#' end ',' delimited
+  //hhmmss.ss, llll.ll, yyyyy.yy,         z,                       x.x (variable)
+  //  time,      lat,    long,     quality of gps(0-2)(bad-good),  alt
+  //units??
+  //more precise alt?
+  if(hasGPS)
+  {
+    int commaCount = 0;
+    String altitude = "";
+    String latitude = "";
+    String longitude = "";
+    String time = "";
+    String quality = "";
+    //static sized information can be extracted easily
+    //GPSrelay = "@" + GPSsentence.substring(6,15) + ',' + GPSsentence.substring(16,23) + ',' + GPSsentence.substring(26,34) + ',' + GPSsentence.charAt(37) + ','; //delete old sentence
+    
+     //---------------------------tests---------------------------
+     //Serial2.print("has GPS ");  // *******************************************************************change to Serial 2
+     //---------------------------tests---------------------------
+    
+    
+    //reset the relay sentence
+    GPSrelay = "@";
+    
+    if(GPSsentence.substring(0,5).equals("GPGGA"))
+    {
+      //parse info
+      for(int i = 0; i < GPSsentence.length(); i++)
+      {
+        //count commas: information comma delimited
+        if(GPSsentence.charAt(i) == ',')
+        {
+          commaCount++;
+        }
+        
+        //get time info from GGA string
+        if(commaCount == 1 && time.equals("")) //only form time string once/ the first time
+        {
+          int j = 0;
+          while(GPSsentence.charAt(i + 1 + j) != ',')
+          {
+            time = time + GPSsentence.charAt(i + 1 + j);
+            j++;
+          }
+        }
+        
+        //get latitude info 
+        if(commaCount == 2 && latitude.equals(""))
+        {
+          int j = 0;
+          while(GPSsentence.charAt(i + 1 + j) != ',')
+          {
+            latitude = latitude + GPSsentence.charAt(i + 1 + j);
+            j++;
+          }
+        }
+        
+        //get longitude info
+        if(commaCount == 4 && longitude.equals(""))
+        {
+          int j = 0;
+          while(GPSsentence.charAt(i + 1 + j) != ',')
+          {
+            longitude = longitude + GPSsentence.charAt(i + 1 + j);
+            j++;
+          }
+        }
+        
+        //get GPS quality info
+        if(commaCount == 6 && quality.equals(""))
+        {       
+            quality = GPSsentence.charAt(i + 1);
+        }
+        
+        //get alitude info
+        if(commaCount == 9 && altitude.equals("")) 
+        {
+          int j = 0;
+          while(GPSsentence.charAt(i + 1 + j) != ',')
+          {
+            altitude = altitude + GPSsentence.charAt(i + 1 + j);
+            j++;
+          } 
+          break; //last info was obtained, break from parsing loop
+        }
+      }
+      //form the new sentence structure from obtained info
+      GPSrelay = GPSrelay + time + "," + latitude + "," + longitude + "," + quality + "," + altitude + "#" + "\r\n";
+      Serial2.print(GPSrelay);   // *******************************************************************change to Serial 2
+    }
+    
+    else if(GPSsentence.substring(0,3).equals("GPRMC"))
+    {
+      
+    }
+    
+    //GPSrelay = GPSrelay + altitude + '#'; 
+    
+    //---------------------------tests---------------------------
+//    Serial.print("has GPS sentence: ");
+//    Serial.print(GPSsentence + "\n");
+//    Serial.print("sent GPS relay: ");
+//    Serial.print(GPSrelay + "\n");
+    //---------------------------tests---------------------------
+    //Serial.print(GPSrelay);
+    
+    hasGPS = false;
+  }
+   
+}
+
